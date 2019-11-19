@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -27,13 +27,12 @@
 //-----------------------------------------------------------------------------
 // This file is a part of the QuickQanava software library.
 //
-// \file	qanGroup.h
-// \author	benoit@destrat.io
-// \date	2016 03 22
+// \file    qanGroup.h
+// \author  benoit@destrat.io
+// \date    2016 03 22
 //-----------------------------------------------------------------------------
 
-#ifndef qanGroup_h
-#define qanGroup_h
+#pragma once
 
 // Qt headers
 #include <QQuickItem>
@@ -54,7 +53,7 @@ class GroupItem;
  *
  * \nosubgrouping
  */
-class Group : public gtpo::GenGroup< qan::GraphConfig >
+class Group : public qan::Node
 {
     /*! \name Group Object Management *///-------------------------------------
     //@{
@@ -65,24 +64,28 @@ public:
     /*! \brief Remove any childs group who have no QQmlEngine::CppOwnership.
      *
      */
-    virtual ~Group();
+    virtual ~Group() override = default;
     Group( const Group& ) = delete;
+
+    using gtpo_node_t = gtpo::node<qan::Config>;
 public:
-    Q_PROPERTY( qan::Graph* graph READ getGraph FINAL )
-    //! Shortcut to gtpo::GenGroup<>::getGraph().
+    Q_PROPERTY( qan::Graph* graph READ getGraph CONSTANT FINAL )
+    //! Shortcut to gtpo::group<>::getGraph().
     qan::Graph*         getGraph() noexcept;
     //! \copydoc getGraph()
     const qan::Graph*   getGraph() const noexcept;
 
+    /*! \brief Collect this group adjacent edges (ie adjacent edges of group and group nodes).
+     *
+     */
+    std::unordered_set<qan::Edge*>  collectAdjacentEdges() const;
+
 public:
     friend class qan::GroupItem;
 
-    Q_PROPERTY( qan::GroupItem* item READ getItem FINAL )
-    qan::GroupItem*         getItem() noexcept;
-    const qan::GroupItem*   getItem() const noexcept;
-    void                    setItem(qan::GroupItem* item) noexcept;
-private:
-    QPointer<qan::GroupItem> _item;
+    qan::GroupItem*         getGroupItem() noexcept;
+    const qan::GroupItem*   getGroupItem() const noexcept;
+    virtual void            setItem(qan::NodeItem* item) noexcept override;
 
 public:
     //! Shortcut to getItem()->proposeNodeDrop(), defined only for g++ compatibility to avoid forward template declaration.
@@ -113,21 +116,8 @@ public:
     /*! \name Group Nodes Management *///--------------------------------------
     //@{
 public:
-    //! Return true if node \c node is registered in this group, shortcut to gtpo::GenGroup<qan::GraphConfig>::hasNode().
+    //! Return true if node \c node is registered in this group, shortcut to gtpo::group<qan::Config>::hasNode().
     Q_INVOKABLE bool    hasNode( qan::Node* node ) const;
-    //@}
-    //-------------------------------------------------------------------------
-
-    /*! \name Appearance Management *///---------------------------------------
-    //@{
-public:
-    Q_PROPERTY( QString label READ getLabel WRITE setLabel NOTIFY labelChanged FINAL )
-    void        setLabel( const QString& label ) { _label = label; emit labelChanged( ); }
-    QString     getLabel( ) const { return _label; }
-private:
-    QString     _label = QString{ "" };
-signals:
-    void        labelChanged( );
     //@}
     //-------------------------------------------------------------------------
 
@@ -136,17 +126,18 @@ signals:
 public:
     /*! \brief Define if the group could actually be dragged by mouse.
      *
-     * Set this property to true if you want to allow this group to be moved by mouse (if false, the node position is
+     * Set to true to allow this group to be moved by mouse drag (if false, the node position is
      * fixed and should be changed programmatically).
-     * Default to true.
+     *
+     * Default to true (ie group is draggable by mouse).
      */
     Q_PROPERTY( bool draggable READ getDraggable WRITE setDraggable NOTIFY draggableChanged FINAL )
-    void            setDraggable( bool draggable ) { _draggable = draggable; emit draggableChanged( ); }
-    bool            getDraggable( ) { return _draggable; }
+    void            setDraggable(bool draggable) noexcept;
+    bool            getDraggable() const noexcept;
 private:
     bool            _draggable = true;
 signals:
-    void            draggableChanged( );
+    void            draggableChanged();
     //@}
     //-------------------------------------------------------------------------
 };
@@ -154,5 +145,3 @@ signals:
 } // ::qan
 
 QML_DECLARE_TYPE( qan::Group )
-
-#endif // qanGroup_h

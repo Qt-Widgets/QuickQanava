@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -46,13 +46,11 @@ namespace qan { // ::qan
 
 /* Connector Object Management *///--------------------------------------------
 Connector::Connector(QQuickItem* parent) :
-    qan::NodeItem( parent )
+    qan::NodeItem{parent}
 {
     setAcceptDrops(false);
     setVisible(false);
 }
-
-Connector::~Connector() { /* Nil */ }
 
 auto    Connector::setGraph(qan::Graph* graph) noexcept -> void
 {
@@ -93,25 +91,25 @@ qan::NodeStyle* Connector::style() noexcept
 /* Connector Configuration *///------------------------------------------------
 void    Connector::connectorReleased(QQuickItem* target) noexcept
 {
+    qWarning() << "connectorReleased...";
     // Restore original position
     if ( _connectorItem )
         _connectorItem->setState("NORMAL");
 
     if ( _edgeItem )    // Hide connector "transcient" edge item
         _edgeItem->setVisible(false);
+
     if ( !_graph )
         return;
 
     const auto dstNodeItem = qobject_cast<qan::NodeItem*>(target);
     const auto dstPortItem = qobject_cast<qan::PortItem*>(target);
-    const auto dstEdgeItem = qobject_cast<qan::EdgeItem*>(target);
 
     const auto srcPortItem = _sourcePort;
     const auto srcNode = _sourceNode ? _sourceNode.data() :
                                        _sourcePort ? _sourcePort->getNode() : nullptr;
     const auto dstNode = dstNodeItem ? dstNodeItem->getNode() :
                                        dstPortItem ? dstPortItem->getNode() : nullptr;
-    const auto dstEdge = dstEdgeItem ? dstEdgeItem->getEdge() : nullptr;
 
     qan::Edge* createdEdge = nullptr;   // Result created edge
     if ( srcNode != nullptr &&          //// Regular edge node to node connection //////////
@@ -129,36 +127,27 @@ void    Connector::connectorReleased(QQuickItem* target) noexcept
             qDebug() << "edge source bindable=" << _graph->isEdgeDestinationBindable(*dstPortItem );
         }
 
-        if ( srcPortItem != nullptr &&
+        if ( srcPortItem &&
              dstPortItem != nullptr )
             create = _graph->isEdgeSourceBindable(*srcPortItem ) &&
                      _graph->isEdgeDestinationBindable(*dstPortItem);
-        else if ( srcPortItem == nullptr &&
+        else if ( !srcPortItem &&
                   dstPortItem != nullptr )
             create = _graph->isEdgeDestinationBindable(*dstPortItem);
-        else if ( srcPortItem != nullptr &&
+        else if ( srcPortItem &&
                   dstPortItem == nullptr )
             create = _graph->isEdgeSourceBindable(*srcPortItem);
-        qDebug() << "edge can be created=" << create;
         if ( getCreateDefaultEdge() ) {
             if ( create )
                 createdEdge = _graph->insertEdge( srcNode, dstNode );
             if ( createdEdge != nullptr ) {     // Special handling for src or dst port item binding
-                if ( srcPortItem != nullptr )
+                if ( srcPortItem )
                     _graph->bindEdgeSource(*createdEdge, *srcPortItem);
                 if ( dstPortItem != nullptr )
                     _graph->bindEdgeDestination(*createdEdge, *dstPortItem );   // Bind created edge to a destination port
             }
         } else
             emit requestEdgeCreation(srcNode, dstNode);
-    } else if ( srcNode != nullptr &&   //// Hyper edge node to edge connection ///////////
-                dstEdge != nullptr &&
-                getHEdgeEnabled() ) {
-        if ( !dstEdgeItem->isHyperEdge() ) {            // Do not create an hyper edge on an hyper edge
-            if ( getCreateDefaultEdge() )
-                createdEdge = _graph->insertEdge( srcNode, dstEdge );
-            else emit requestEdgeCreation(srcNode, dstEdge);
-        }
     }
     if ( createdEdge ) // Notify user of the edge creation
         emit edgeInserted( createdEdge );
@@ -166,15 +155,23 @@ void    Connector::connectorReleased(QQuickItem* target) noexcept
 
 void    Connector::connectorPressed() noexcept
 {
-    if ( _graph != nullptr &&
-         _edgeItem != nullptr ) {
-        _edgeItem->setGraph(_graph);    // Eventually, configure edge item
-        const auto srcItem = _sourcePort ? _sourcePort :
-                                           _sourceNode ? _sourceNode->getItem() : nullptr;
-        _edgeItem->setSourceItem(srcItem);
-        _edgeItem->setDestinationItem(this);
-        _edgeItem->setVisible(true);
-    }
+    // PRECONDITIONS:
+        // _graph can't be nullptr
+        // _edgeItem can't be nullptr
+    if (_graph == nullptr)
+        return;
+    if (_edgeItem == nullptr)
+        return;
+
+    _edgeItem->setGraph(_graph);    // Eventually, configure edge item
+    const auto srcItem = _sourcePort ? _sourcePort :
+                                       _sourceNode ? _sourceNode->getItem() : nullptr;
+    _edgeItem->setSourceItem(srcItem);
+    _edgeItem->setDestinationItem(this);
+    _edgeItem->setVisible(true);
+
+    if (_sourceNode)
+        _graph->selectNode(*_sourceNode);
 }
 
 auto    Connector::getCreateDefaultEdge() const noexcept -> bool { return _createDefaultEdge; }
@@ -186,21 +183,16 @@ auto    Connector::setCreateDefaultEdge(bool createDefaultEdge) noexcept -> void
     }
 }
 
-auto    Connector::getHEdgeEnabled() const noexcept -> bool { return _hEdgeEnabled; }
-auto    Connector::setHEdgeEnabled(bool hEdgeEnabled) noexcept -> void
-{
-    if ( hEdgeEnabled != _hEdgeEnabled ) {
-        _hEdgeEnabled = hEdgeEnabled;
-        emit hEdgeEnabledChanged();
-    }
-}
-
 auto    Connector::getConnectorItem() noexcept -> QQuickItem* { return _connectorItem.data(); }
 auto    Connector::setConnectorItem(QQuickItem* connectorItem) noexcept -> void
 {
     if ( _connectorItem != connectorItem ) {
-        if ( _connectorItem )
+        if ( _connectorItem ) {
+            disconnect(_connectorItem.data(), nullptr,
+                       this, nullptr);
             _connectorItem->deleteLater();
+        }
+
         _connectorItem = connectorItem;
         if ( _connectorItem ) {
             _connectorItem->setParentItem(this);
@@ -222,7 +214,8 @@ auto    Connector::setEdgeComponent(QQmlComponent* edgeComponent) noexcept -> vo
             const auto context = qmlContext(this);
             if ( context != nullptr ) {
                 const auto edgeObject = _edgeComponent->create(context);    // Create a new edge
-                _edgeItem = qobject_cast<qan::EdgeItem*>(edgeObject);
+
+                _edgeItem.reset(qobject_cast<qan::EdgeItem*>(edgeObject));  // Any existing edge item is destroyed
                 if ( _edgeItem &&
                      !_edgeComponent->isError() ) {
                     QQmlEngine::setObjectOwnership( _edgeItem.data(), QQmlEngine::CppOwnership );

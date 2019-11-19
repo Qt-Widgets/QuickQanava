@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -37,6 +37,7 @@
 #include <QPainter>
 
 // QuickQanava headers
+#include "./qanUtils.h"
 #include "./qanEdgeItem.h"
 #include "./qanNodeItem.h"      // Resolve forward declaration
 #include "./qanGroupItem.h"
@@ -58,8 +59,6 @@ EdgeItem::EdgeItem( QQuickItem* parent ) :
     setStyle( qan::Edge::style() );
     setObjectName( QStringLiteral("qan::EdgeItem") );
 }
-
-EdgeItem::~EdgeItem() { /* Nil */ }
 
 auto    EdgeItem::getEdge() noexcept -> qan::Edge* { return _edge.data(); }
 auto    EdgeItem::getEdge() const noexcept -> const qan::Edge* { return _edge.data(); }
@@ -87,8 +86,6 @@ auto    EdgeItem::setGraph(qan::Graph* graph) noexcept -> void {
 //-----------------------------------------------------------------------------
 
 /* Edge Topology Management *///-----------------------------------------------
-bool    EdgeItem::isHyperEdge() const noexcept { return ( _edge ? _edge->getHDst().lock() != nullptr : false ); }
-
 auto    EdgeItem::setSourceItem( qan::NodeItem* source ) -> void
 {
     if ( source == nullptr )
@@ -137,14 +134,6 @@ auto    EdgeItem::setDestinationItem( qan::NodeItem* destination ) -> void
     configureDestinationItem( destination );
     _destinationItem = destination;
     emit destinationItemChanged();
-    updateItem();
-}
-
-void    EdgeItem::setDestinationEdge( qan::EdgeItem* destination )
-{
-    configureDestinationItem( destination );
-    _destinationEdge = destination;
-    emit destinationEdgeChanged();
     updateItem();
 }
 
@@ -200,18 +189,54 @@ void    EdgeItem::setHidden(bool hidden) noexcept
     }
 }
 
+void    EdgeItem::setArrowSize( qreal arrowSize ) noexcept
+{
+    if ( !qFuzzyCompare(1. + arrowSize, 1. + _arrowSize ) ) {
+        _arrowSize = arrowSize;
+        emit arrowSizeChanged();
+        updateItem();
+    }
+}
+
+auto    EdgeItem::setSrcShape(ArrowShape srcShape) noexcept -> void
+{
+    if ( _srcShape != srcShape ) {
+        _srcShape = srcShape;
+        emit srcShapeChanged();
+        updateItem();
+    }
+}
+
+auto    EdgeItem::setDstShape(ArrowShape dstShape) noexcept -> void
+{
+    if ( _dstShape != dstShape ) {
+        _dstShape = dstShape;
+        emit dstShapeChanged();
+        updateItem();
+    }
+}
+
 void    EdgeItem::updateItem() noexcept
 {
-    auto cache = generateGeometryCache();
+    // Algorithm:
+        // Generate cache step by step until it become invalid.
+        // 1. Generate                 srcBr / dstBr / srcBrCenter / dstBrCenter / z
+        // 2. generate edge ends:      P1 / P2
+        // 3. generate control points: C1 / C2
+    auto cache = generateGeometryCache();       // 1.
     if ( cache.isValid() ) {
-        generateLineGeometry(cache);
+        switch (cache.lineType) {               // 2.
+        case qan::EdgeStyle::LineType::Straight: generateStraightEnds(cache); break;
+        case qan::EdgeStyle::LineType::Curved:   generateStraightEnds(cache); break;
+        case qan::EdgeStyle::LineType::Ortho:    generateOrthoEnds(cache);    break;
+        }
         if ( cache.isValid() ) {
-            if (cache.lineType == qan::EdgeStyle::LineType::Straight )
-                generateArrowGeometry(cache);
-            else if ( cache.lineType == qan::EdgeStyle::LineType::Curved ) {
-                generateLineControlPoints(cache);
-                generateArrowGeometry(cache);
+            switch (cache.lineType) {           // 3.
+            case qan::EdgeStyle::LineType::Straight: /* Nil */                           break;
+            case qan::EdgeStyle::LineType::Curved:   generateCurvedControlPoints(cache); break;
+            case qan::EdgeStyle::LineType::Ortho:    /* Nil */                           break; // Ortho C1 control point is generated in generateOrthoEnds()
             }
+            generateArrowGeometry(cache);
             generateLabelPosition(cache);
         }
     }
@@ -228,10 +253,10 @@ EdgeItem::GeometryCache  EdgeItem::generateGeometryCache() const noexcept
 {
     // PRECONDITIONS:
         // _sourceItem can't be nullptr
-        // _destinationItem and _destinationEdge can't be _both_ nullptr
+        // _destinationItem can't be nullptr
     if ( !_sourceItem )
         return EdgeItem::GeometryCache{};
-    if ( !_sourceItem && !_destinationEdge )
+    if ( !_destinationItem )
         return EdgeItem::GeometryCache{};
 
     EdgeItem::GeometryCache cache{};
@@ -253,16 +278,16 @@ EdgeItem::GeometryCache  EdgeItem::generateGeometryCache() const noexcept
     if(  srcItem != nullptr ) {
         const auto srcNode = static_cast<qan::Node*>(_sourceItem->getNode());
         if ( srcNode != nullptr ) {
-            const auto srcNodeGroup = qobject_cast<qan::Group*>(srcNode->getGroup().lock().get());
+            const auto srcNodeGroup = qobject_cast<qan::Group*>(srcNode->get_group().lock().get());
             if ( srcNodeGroup != nullptr )
-                srcGroupItem = srcNodeGroup->getItem();
+                srcGroupItem = srcNodeGroup->getGroupItem();
         }
     }
 
     qan::NodeItem*  dstNodeItem = qobject_cast<qan::NodeItem*>(_destinationItem);
     if ( dstNodeItem == nullptr &&
          _edge ) {
-        qan::Node*  dstNode = static_cast< qan::Node* >( _edge->getDst().lock().get() );
+        qan::Node*  dstNode = static_cast< qan::Node* >( _edge->get_dst().lock().get() );
         if ( dstNode != nullptr )
             dstNodeItem = dstNode->getItem();
     }
@@ -271,24 +296,28 @@ EdgeItem::GeometryCache  EdgeItem::generateGeometryCache() const noexcept
     qan::GroupItem* dstGroupItem = nullptr;
     if ( dstNodeItem != nullptr &&
          dstNodeItem->getNode() != nullptr ) {
-        auto dstNodeGroup = qobject_cast<qan::Group*>( dstNodeItem->getNode()->getGroup().lock().get() );
+        auto dstNodeGroup = qobject_cast<qan::Group*>( dstNodeItem->getNode()->get_group().lock().get() );
         if ( dstNodeGroup )
-            dstGroupItem = dstNodeGroup->getItem();
+            dstGroupItem = dstNodeGroup->getGroupItem();
     }
 
-    // Initialize dstEdgeItem
-    qan::EdgeItem*  dstEdgeItem = _edge &&
-                                  _edge->getHDst().lock() ? qobject_cast<qan::EdgeItem*>(_edge->getHDst().lock().get()) : nullptr;
-
     // Finally, generate dstItem wich either dstNodeItem or dstEdgeItem
-    const QQuickItem* dstItem = ( dstNodeItem != nullptr ? qobject_cast<QQuickItem*>(dstNodeItem) :
-                                                           qobject_cast<QQuickItem*>(dstEdgeItem) );
+    const QQuickItem* dstItem = dstNodeItem;
 
     // Check that we have a valid source and destination Quick Item
     if ( srcItem == nullptr || dstItem == nullptr )
         return cache;        // Otherwise, return an invalid cache
     cache.srcItem = srcItem;
     cache.dstItem = dstItem;
+
+    // If the edge "src" or "dst" is inside a collapsed group, generate invalid cache, it will automatically be
+    // hidden
+    if ( srcGroupItem != nullptr &&
+         srcGroupItem->getCollapsed() )
+        return cache;   // Return invalid cache
+    if ( dstGroupItem != nullptr &&
+         dstGroupItem->getCollapsed() )
+        return cache;   // Return invalid cache
 
     // Generate bounding shapes for source and destination in global CS
     {
@@ -305,9 +334,6 @@ EdgeItem::GeometryCache  EdgeItem::generateGeometryCache() const noexcept
             int p = 0;
             for ( const auto& point: dstNodeItem->getBoundingShape() )
                 cache.dstBs[p++] = dstNodeItem->mapToItem( graphContainerItem, point );
-        } else if ( dstEdgeItem != nullptr ) {
-            // FIXME: generate a dump polygon around destination edge center
-            qWarning() << "FIXME: edge does not support destination edge";
         }
     }
 
@@ -319,30 +345,12 @@ EdgeItem::GeometryCache  EdgeItem::generateGeometryCache() const noexcept
     }
 
     // Generate edge geometry Z according to actual src and dst z
-    const qreal srcZ = srcGroupItem != nullptr ? srcGroupItem->z() + srcItem->z() : srcItem->z();
-    const qreal dstZ = dstGroupItem != nullptr ? dstGroupItem->z() + dstItem->z() : dstItem->z();
+    const qreal srcZ = qan::getItemGlobalZ_rec(srcItem);
+    const qreal dstZ = qan::getItemGlobalZ_rec(dstItem);
     cache.z = qMax(srcZ, dstZ) - 0.1;   // Edge z value should be less than src/dst value to ensure port item and selection is on top of edge
 
     if ( _style )
         cache.lineType = _style->getLineType();
-
-    cache.valid = true;  // Finally, validate cache
-    return cache;        // Expecting RVO
-}
-
-void    EdgeItem::generateLineGeometry(GeometryCache& cache) const noexcept
-{
-    // PRECONDITIONS:
-        // edGeometry should be valid
-        // cache srcBs and dstBs must not be empty (valid bounding shapes are necessary)
-    if ( !cache.isValid() )
-        return;
-    if ( cache.srcBs.isEmpty() ||
-         cache.dstBs.isEmpty() ) {
-        qWarning() << "EdgeItem::generateLineGeometry(): called with invalid source or destination bounding shape cache.";
-        cache.valid = false;
-        return;
-    }
 
     // Generate edge line P1 and P2 in global graph CS
     const auto srcBr = cache.srcBs.boundingRect();
@@ -351,15 +359,27 @@ void    EdgeItem::generateLineGeometry(GeometryCache& cache) const noexcept
     const QPointF dstBrCenter = dstBr.center();
     cache.srcBr = srcBr;
     cache.dstBr = dstBr;
-    cache.srcBrCenter = srcBr.center();
-    cache.dstBrCenter = dstBr.center();
+    cache.srcBrCenter = srcBrCenter;
+    cache.dstBrCenter = dstBrCenter;
 
-    const QLineF line = getLineIntersection( srcBrCenter, dstBrCenter, cache.srcBs, cache.dstBs );
+    cache.valid = true;  // Finally, validate cache
+    return cache;        // Expecting RVO
+}
 
-    // Update hidden
+void    EdgeItem::generateStraightEnds(GeometryCache& cache) const noexcept
+{
+    // PRECONDITIONS:
+        // cache should be valid
+        // cache srcBrCenter and dstBrCenter must be valid
+    if ( !cache.isValid() )
+        return;
+
+    const QLineF line = getLineIntersection( cache.srcBrCenter, cache.dstBrCenter, cache.srcBs, cache.dstBs );
+
+    // Update hidden: Edge is hidden if it's size is less than the src/dst shape size sum
     {
         {
-            const auto arrowSize = getStyle() != nullptr ? getStyle()->getArrowSize() : 4.0;
+            const auto arrowSize = getArrowSize();
             const auto arrowLength = arrowSize * 3.;
             if ( line.length() < 2.0 + arrowLength )
                 cache.hidden = true;
@@ -367,8 +387,8 @@ void    EdgeItem::generateLineGeometry(GeometryCache& cache) const noexcept
                 return;
         }
         const QRectF lineBr = QRectF{line.p1(), line.p2()}.normalized();  // Generate a Br with intersection points
-        cache.hidden = ( srcBr.contains(lineBr) ||    // Hide edge if the whole line is contained in either src or dst BR
-                         dstBr.contains(lineBr) );
+        cache.hidden = ( cache.srcBr.contains(lineBr) ||    // Hide edge if the whole line is contained in either src or dst BR
+                         cache.dstBr.contains(lineBr) );
         if ( cache.hidden )  // Fast exit if edge is hidden
             return;
     }
@@ -412,7 +432,7 @@ void    EdgeItem::generateLineGeometry(GeometryCache& cache) const noexcept
                         c = QPointF{p.x() > brCenter.x() ? br.right() : br.left(), brCenter.y()};
                     break;
                 }
-             } else {    // qan::EdgeStyle::LineType::Curved, for curved line, do not intersection, generate point according to port type.
+             } else {    // qan::EdgeStyle::LineType::Curved, for curved line, do not intersect ports, generate point according to port type.
                 switch ( dockType ) {
                     case qan::NodeItem::Dock::Left:
                         c = QPointF{br.left(), brCenter.y() };
@@ -433,12 +453,107 @@ void    EdgeItem::generateLineGeometry(GeometryCache& cache) const noexcept
 
         const auto srcPort = qobject_cast<const qan::PortItem*>(cache.srcItem);
         if ( srcPort != nullptr )
-            cache.p1 = correctPortPoint(cache, srcPort->getDockType(), p1, srcBrCenter, srcBr );
+            cache.p1 = correctPortPoint(cache, srcPort->getDockType(), p1, cache.srcBrCenter, cache.srcBr );
 
         const auto dstPort = qobject_cast<const qan::PortItem*>(cache.dstItem);
             if ( dstPort != nullptr )
-                cache.p2 = correctPortPoint(cache, dstPort->getDockType(), p2, dstBrCenter, dstBr );
+                cache.p2 = correctPortPoint(cache, dstPort->getDockType(), p2, cache.dstBrCenter, cache.dstBr );
      } // dock configuration block
+}
+
+void    EdgeItem::generateOrthoEnds(GeometryCache& cache) const noexcept
+{
+    // PRECONDITIONS:
+        // cache should be valid
+        // cache srcBs and dstBs must not be empty (valid bounding shapes are necessary)
+    if ( !cache.isValid() )
+        return;
+
+    // Algorithm:
+        // See algorithm description in wiki:
+        //   https://github.com/cneben/QuickQanava/wiki/Edge-Geometry-Management
+        // Orientation (left, right, top, bottom) is defined from an SRC POV (and
+        // orientation is SRC to DST direction).
+        //
+        // 1. Check if horizontal or vertical line should be generated
+            // 1.1 Generate h or v line, set edge style to straight since we are just
+            //     drawing a line
+        // 2. Otherwise identify if a TR, BR, BL or TL edge should be generated
+            // 2.1 Check if we have a more "horiz" or "vert" edge to generate
+            // 2.1 Generate P1 control point according to pair {(TR, BR, BL, TL), (horiz, vert)}
+
+    // 1.
+    if (cache.srcBrCenter.y() > cache.dstBr.top() &&            // Horizontal line
+        cache.srcBrCenter.y() < cache.dstBr.bottom() ) {
+        if (cache.dstBrCenter.x() < cache.srcBrCenter.x()) {        // DST is on SRC left
+            cache.p1 = QPointF{cache.srcBr.left(),  cache.srcBrCenter.y()};
+            cache.p2 = QPointF{cache.dstBr.right(), cache.srcBrCenter.y()};
+            cache.c1 = QLineF{cache.p1, cache.p2}.center();
+        } else {                                                    // DST is on SRC right
+            cache.p1 = QPointF{cache.srcBr.right(), cache.srcBrCenter.y()};
+            cache.p2 = QPointF{cache.dstBr.left(),  cache.srcBrCenter.y()};
+            cache.c1 = QLineF{cache.p1, cache.p2}.center();
+        }
+    } else if (cache.srcBrCenter.x() < cache.dstBr.right() &&   // Vertical line
+               cache.srcBrCenter.x() > cache.dstBr.left() ) {
+        if (cache.dstBrCenter.y() < cache.srcBrCenter.y()) {        // DST is on SRC top
+            cache.p1 = QPointF{cache.srcBrCenter.x(), cache.srcBr.top()};
+            cache.p2 = QPointF{cache.srcBrCenter.x(), cache.dstBr.bottom()};
+            cache.c1 = QLineF{cache.p1, cache.p2}.center();
+        } else {                                                    // DST is on SRC bottom
+            cache.p1 = QPointF{cache.srcBrCenter.x(), cache.srcBr.bottom()};
+            cache.p2 = QPointF{cache.srcBrCenter.x(), cache.dstBr.top()};
+            cache.c1 = QLineF{cache.p1, cache.p2}.center();
+        }
+    } else { // 2.
+        const bool top = cache.dstBrCenter.y() < cache.srcBr.y();
+        const bool bottom = !top;
+        const bool right = cache.dstBrCenter.x() > cache.srcBr.x();
+        const bool left = !right;
+        // Note: vertical layout is privilegied to horizontal since most of the time, we are
+        // building vertical taxonomoy / hierarchy layout. Add an option for the user to promote horizontal
+        // ortho "flow" layouts.
+        const bool horiz = 0.50 * std::fabs(cache.dstBrCenter.x() - cache.srcBrCenter.x()) >
+                           std::fabs(cache.dstBrCenter.y() - cache.srcBrCenter.y());
+        const bool vert = !horiz;
+        if ( bottom ) {     // BOTTOM
+            if ( right && vert) {             // BR, vertical edge
+                cache.p1 = QPointF{cache.srcBrCenter.x(),   cache.srcBr.bottom()};
+                cache.p2 = QPointF{cache.dstBr.left(),      cache.dstBrCenter.y()};
+                cache.c1 = QPointF{cache.srcBrCenter.x(),   cache.dstBrCenter.y()};
+            } else if (right && horiz) {      // BR, horizontal edge
+                cache.p1 = QPointF{cache.srcBr.right(),     cache.srcBrCenter.y()};
+                cache.p2 = QPointF{cache.dstBrCenter.x(),   cache.dstBr.top()    };
+                cache.c1 = QPointF{cache.dstBrCenter.x(),   cache.srcBrCenter.y()};
+            } else if (left && vert) {        // BL, vertical edge
+                cache.p1 = QPointF{cache.srcBrCenter.x(),   cache.srcBr.bottom()};
+                cache.p2 = QPointF{cache.dstBr.right(),     cache.dstBrCenter.y()};
+                cache.c1 = QPointF{cache.srcBrCenter.x(),   cache.dstBrCenter.y()};
+            } else if (left && horiz) {       // BL, horizontal edge
+                cache.p1 = QPointF{cache.srcBr.left(),      cache.srcBrCenter.y()};
+                cache.p2 = QPointF{cache.dstBrCenter.x(),   cache.dstBr.top()    };
+                cache.c1 = QPointF{cache.dstBrCenter.x(),   cache.srcBrCenter.y()};
+            }
+        } else {            // TOP
+            if ( right && vert) {             // TR, vertical edge
+                cache.p1 = QPointF{cache.srcBrCenter.x(),   cache.srcBr.top()};
+                cache.p2 = QPointF{cache.dstBr.left(),      cache.dstBrCenter.y()};
+                cache.c1 = QPointF{cache.srcBrCenter.x(),   cache.dstBrCenter.y()};
+            } else if (right && horiz) {      // TR, horizontal edge
+                cache.p1 = QPointF{cache.srcBr.right(),     cache.srcBrCenter.y()};
+                cache.p2 = QPointF{cache.dstBrCenter.x(),   cache.dstBr.bottom()    };
+                cache.c1 = QPointF{cache.dstBrCenter.x(),   cache.srcBrCenter.y()};
+            } else if (left && vert) {        // TL, vertical edge
+                cache.p1 = QPointF{cache.srcBrCenter.x(),   cache.srcBr.top()};
+                cache.p2 = QPointF{cache.dstBr.right(),     cache.dstBrCenter.y()};
+                cache.c1 = QPointF{cache.srcBrCenter.x(),   cache.dstBrCenter.y()};
+            } else if (left && horiz) {       // TL, horizontal edge
+                cache.p1 = QPointF{cache.srcBr.left(),      cache.srcBrCenter.y()};
+                cache.p2 = QPointF{cache.dstBrCenter.x(),   cache.dstBr.bottom()    };
+                cache.c1 = QPointF{cache.dstBrCenter.x(),   cache.srcBrCenter.y()};
+            }
+        }
+    }
 }
 
 void    EdgeItem::generateArrowGeometry(GeometryCache& cache) const noexcept
@@ -448,46 +563,136 @@ void    EdgeItem::generateArrowGeometry(GeometryCache& cache) const noexcept
     if ( !cache.isValid() )
         return;
 
-    const qreal arrowSize = getStyle() != nullptr ? getStyle()->getArrowSize() : 4.0;
+    const qreal arrowSize = getArrowSize();
     const qreal arrowLength = arrowSize * 3.;
 
-    cache.dstA1 = QPointF{ 0.,           -arrowSize  };
-    cache.dstA2 = QPointF{ arrowLength,  0.          };
-    cache.dstA3 = QPointF{ 0.,           arrowSize   };
+    // Prepare points and helper variables
+    //QPointF point0       = QPointF{ 0.,           0.          }; // Point zero
+    QPointF pointA2      = QPointF{ arrowLength,  0.          }; // A2 is the same for all shapes
 
-    static constexpr    qreal MinLength = 0.00001;          // Correct line dst point to take into account the arrow geometry
-    const QLineF line{cache.p1, cache.p2};    // Generate dst arrow line angle
-    if ( cache.lineType == qan::EdgeStyle::LineType::Straight ) {
-        if ( line.length() > MinLength )    // Protect line.length() DIV0
-            cache.p2 = line.pointAt( 1.0 - (arrowLength/line.length()) );
-        cache.dstAngle = lineAngle(line);
-    } else if ( cache.lineType == qan::EdgeStyle::LineType::Curved ) {
-        // Generate arrow orientation:
-        // General case: get cubic tangent at line end.
-        // Special case: when line length is small (ie less than 4 time arrow length), curve might
-        //               have very sharp orientation, average tangent at curve end AND line angle to avoid
-        //               arrow orientation that does not fit the average curve angle.
-        static constexpr auto averageDstAngleFactor = 4.0;
-        if ( line.length() > averageDstAngleFactor * arrowLength )         // General case
-            cache.dstAngle = cubicCurveAngleAt(0.99, cache.p1, cache.p2, cache.c1, cache.c2);
-        else {                                                          // Special case
-            cache.dstAngle = ( 0.4 * cubicCurveAngleAt(0.99, cache.p1, cache.p2, cache.c1, cache.c2) +
-                               0.6 * lineAngle(line) );
-        }
+    QPointF arrowA1      = QPointF{ 0.,          -arrowSize   };
+    QPointF arrowA3      = QPointF{ 0.,           arrowSize   };
 
-        // Use dst angle to generate an end point translated by -arrowLength...
-        // Build a (P2, C2) vector
-        QVector2D dstVector( QPointF{cache.c2.x() - cache.p2.x(), cache.c2.y() - cache.p2.y()} );
-        dstVector.normalize();
-        dstVector *= static_cast<float>(arrowLength);
-        cache.p2 = cache.p2 + dstVector.toPointF();
+    QPointF circleRectA1 = QPointF{ arrowLength/2., -arrowLength/2. };
+    QPointF circleRectA3 = QPointF{ arrowLength/2.,  arrowLength/2. };
+
+    // Point A2 is the same for all arrow shapes
+    cache.srcA2 = pointA2;
+    cache.dstA2 = pointA2;
+
+    // Update source arrow cache points
+    const auto srcShape = getSrcShape();
+    switch (srcShape) {
+        case qan::EdgeItem::ArrowShape::Arrow:      // [[fallthrough]]
+        case qan::EdgeItem::ArrowShape::ArrowOpen:
+            cache.srcA1 = arrowA1;
+            cache.srcA3 = arrowA3;
+            break;
+        case qan::EdgeItem::ArrowShape::Circle:     // [[fallthrough]]
+        case qan::EdgeItem::ArrowShape::CircleOpen: // [[fallthrough]]
+        case qan::EdgeItem::ArrowShape::Rect:       // [[fallthrough]]
+        case qan::EdgeItem::ArrowShape::RectOpen:
+            cache.srcA1 = circleRectA1;
+            cache.srcA3 = circleRectA3;
+            break;
+        case qan::EdgeItem::ArrowShape::None:
+            break;
+        // No default, anyway the cache will be invalid
+    }
+    // Update destination arrow cache points
+    const auto dstShape = getDstShape();
+    switch (dstShape) {
+        case qan::EdgeItem::ArrowShape::Arrow:      // [[fallthrough]]
+        case qan::EdgeItem::ArrowShape::ArrowOpen:
+            cache.dstA1 = arrowA1;
+            cache.dstA3 = arrowA3;
+            break;
+        case qan::EdgeItem::ArrowShape::Rect:       // [[fallthrough]]
+        case qan::EdgeItem::ArrowShape::RectOpen:   // [[fallthrough]]
+        case qan::EdgeItem::ArrowShape::Circle:     // [[fallthrough]]
+        case qan::EdgeItem::ArrowShape::CircleOpen:
+            cache.dstA1 = circleRectA1;
+            cache.dstA3 = circleRectA3;
+            break;
+        case qan::EdgeItem::ArrowShape::None:
+            break;
+        // No default, anyway the cache will be invalid
+    }
+
+    // Generate start/end arrow angle
+    switch (cache.lineType) {
+        case qan::EdgeStyle::LineType::Straight:
+            cache.dstAngle = generateStraightArrowAngle(cache.p1, cache.p2, dstShape, arrowLength);
+            cache.srcAngle = generateStraightArrowAngle(cache.p2, cache.p1, srcShape, arrowLength);
+            break;
+
+        case qan::EdgeStyle::LineType::Ortho:
+            cache.dstAngle = generateStraightArrowAngle(cache.c1, cache.p2, dstShape, arrowLength);
+            cache.srcAngle = generateStraightArrowAngle(cache.c1, cache.p1, srcShape, arrowLength);
+            break;
+
+        case qan::EdgeStyle::LineType::Curved:
+            // Generate source arrow angle (p2 <-> p1 and c2 <-> c1)
+            cache.srcAngle = generateCurvedArrowAngle(cache.p2, cache.p1,
+                                                      cache.c2, cache.c1,
+                                                      srcShape, arrowLength);
+
+            // Generate destination arrow angle
+            cache.dstAngle = generateCurvedArrowAngle(cache.p1, cache.p2,
+                                                      cache.c1, cache.c2,
+                                                      dstShape, arrowLength);
+            break;
     }
 }
 
-void    EdgeItem::generateLineControlPoints(GeometryCache& cache) const noexcept
+qreal   EdgeItem::generateStraightArrowAngle(QPointF& p1, QPointF& p2,
+                                             const qan::EdgeItem::ArrowShape arrowShape,
+                                             const qreal arrowLength) const noexcept
+{
+    static constexpr    qreal MinLength = 0.00001;          // Correct line dst point to take into account the arrow geometry
+    const QLineF line{p1, p2};    // Generate dst arrow line angle
+    if (line.length() > MinLength &&       // Protect line.length() DIV0
+        arrowShape != ArrowShape::None)    // Do not correct edge extremity by arrowLength if there is not arrow
+        p2 = line.pointAt( 1.0 - (arrowLength / line.length()) );
+    return lineAngle(line);
+}
+
+qreal   EdgeItem::generateCurvedArrowAngle(QPointF& p1, QPointF& p2,
+                                           const QPointF& c1, const QPointF& c2,
+                                           const qan::EdgeItem::ArrowShape arrowShape,
+                                           const qreal arrowLength) const noexcept
+{
+    const QLineF line{p1, p2};    // Generate dst arrow line angle
+    qreal angle = 0.;
+
+    // Generate arrow orientation:
+    // General case: get cubic tangent at line end.
+    // Special case: when line length is small (ie less than 4 time arrow length), curve might
+    //               have very sharp orientation, average tangent at curve end AND line angle to avoid
+    //               arrow orientation that does not fit the average curve angle.
+    static constexpr auto averageDstAngleFactor = 4.0;
+    if ( line.length() > averageDstAngleFactor * arrowLength )      // General case
+        angle = cubicCurveAngleAt(0.99, p1, p2, c1, c2);
+    else {                                                          // Special case
+        angle = ( 0.4 * cubicCurveAngleAt(0.99, p1, p2, c1, c2) +
+                  0.6 * lineAngle(line) );
+    }
+
+    // Use dst angle to generate an end point translated by -arrowLength except if there is no end shape
+    // Build a (P2, C2) vector
+    if (arrowShape != ArrowShape::None) {
+        QVector2D dstVector{ QPointF{c2.x() - p2.x(), c2.y() - p2.y()} };
+        dstVector.normalize();
+        dstVector *= static_cast<float>(arrowLength);
+        p2 = QPointF{p2} + dstVector.toPointF();
+    }
+   return angle;
+}
+
+void    EdgeItem::generateCurvedControlPoints(GeometryCache& cache) const noexcept
 {
     // PRECONDITIONS:
-        // edGeometry should be valid
+        // cache should be valid
         // cache srcBs and dstBs must not be empty (valid bounding shapes are necessary)
         // cache style must be straight line
     if ( !cache.isValid() )
@@ -651,6 +856,7 @@ void    EdgeItem::generateLineControlPoints(GeometryCache& cache) const noexcept
     cache.p2 = getLineIntersection( cache.c2, cache.dstBrCenter, cache.dstBs);
 }
 
+
 void    EdgeItem::generateLabelPosition(GeometryCache& cache) const noexcept
 {
     // PRECONDITIONS:
@@ -678,7 +884,7 @@ void    EdgeItem::applyGeometry(const GeometryCache& cache) noexcept
         return;
 
     if ( cache.hidden ) {    // Apply hidden property
-        setVisible(false);
+        // Note: Do not call setVisible(false), visibility management is left up to the user
         setHidden(true);
         return;
     }
@@ -705,10 +911,24 @@ void    EdgeItem::applyGeometry(const GeometryCache& cache) noexcept
             _dstA1 = cache.dstA1;    // Arrow geometry is already expressed in edge "local CS"
             _dstA2 = cache.dstA2;
             _dstA3 = cache.dstA3;
-            emit arrowGeometryChanged();
+            emit dstArrowGeometryChanged();
+
+            _srcAngle = cache.srcAngle;
+            emit srcAngleChanged(); // Note: Update srcAngle before arrow geometry.
+
+            _srcA1 = cache.srcA1;    // Arrow geometry is already expressed in edge "local CS"
+            _srcA2 = cache.srcA2;
+            _srcA3 = cache.srcA3;
+            emit srcArrowGeometryChanged();
         }
 
-        if ( cache.lineType == qan::EdgeStyle::LineType::Curved ) { // Apply control point geometry
+        // Apply control point geometry
+            // For otho edge: 3 points for a line P1 -> C1 -> P2
+            // For Curved edge: a cubic spline with C1 and C2
+        if ( cache.lineType == qan::EdgeStyle::LineType::Ortho ) {
+            _c1 = mapFromItem(graphContainerItem, cache.c1);
+            emit controlPointsChanged();
+        } else if ( cache.lineType == qan::EdgeStyle::LineType::Curved ) { // Apply control point geometry
             _c1 = mapFromItem(graphContainerItem, cache.c1);
             _c2 = mapFromItem(graphContainerItem, cache.c2);
             emit controlPointsChanged();
@@ -719,7 +939,7 @@ void    EdgeItem::applyGeometry(const GeometryCache& cache) noexcept
     }
 
     // Edge item geometry is now valid, set the item visibility to true and "unhide" it
-    setVisible(true);
+    //setVisible(true);
     setHidden(false);
 }
 
@@ -842,8 +1062,7 @@ void    EdgeItem::mouseDoubleClickEvent( QMouseEvent* event )
 
 void    EdgeItem::mousePressEvent( QMouseEvent* event )
 {
-    const qreal d = distanceFromLine( event->localPos( ), QLineF{_p1, _p2} );
-    if ( d > -0.0001 && d < 5. ) {
+    if (contains(event->localPos())) {
         if ( event->button() == Qt::LeftButton ) {
             emit edgeClicked( this, event->localPos() );
             event->accept();
@@ -851,10 +1070,8 @@ void    EdgeItem::mousePressEvent( QMouseEvent* event )
         else if ( event->button() == Qt::RightButton ) {
             emit edgeRightClicked( this, event->localPos() );
             event->accept();
-            return;
         }
-    }
-    else
+    } else
         event->ignore();
 }
 
@@ -881,7 +1098,8 @@ void    EdgeItem::setStyle( EdgeStyle* style ) noexcept
 {
     if ( style != _style ) {
         if ( _style != nullptr )  // Every style that is non default is disconnect from this node
-            QObject::disconnect( _style, 0, this, 0 );
+            QObject::disconnect( _style, nullptr,
+                                 this,   nullptr );
         _style = style;
         if ( _style ) {
             connect( _style,    &QObject::destroyed,    // Monitor eventual style destruction
@@ -892,11 +1110,16 @@ void    EdgeItem::setStyle( EdgeStyle* style ) noexcept
             // from edge delegate). Since arrowSize affect concrete edge geometry, bind it manually to
             // updateItem().
             connect( _style,    &qan::EdgeStyle::arrowSizeChanged,
-                     this,      &EdgeItem::updateItem );
+                     this,      &EdgeItem::styleModified );
             connect( _style,    &qan::EdgeStyle::lineTypeChanged,
-                     this,      &EdgeItem::updateItem );
+                     this,      &EdgeItem::styleModified );
+            connect( _style,    &qan::EdgeStyle::srcShapeChanged,   // FIXME: Add intelligent updating
+                     this,      &EdgeItem::styleModified );
+            connect( _style,    &qan::EdgeStyle::dstShapeChanged,   // FIXME: Add intelligent updating
+                     this,      &EdgeItem::styleModified );
         }
-        emit styleChanged( );
+        emit styleChanged();
+        updateItem();   // Force initial style settings
     }
 }
 
@@ -905,14 +1128,45 @@ void    EdgeItem::styleDestroyed( QObject* style )
     if ( style != nullptr )
         setStyle( nullptr );
 }
+
+void    EdgeItem::styleModified()
+{
+    if ( getStyle() != nullptr ) {
+        _arrowSize = getStyle()->getArrowSize();
+        emit arrowSizeChanged();
+        _srcShape = getStyle()->getSrcShape();
+        emit srcShapeChanged();
+        _dstShape = getStyle()->getDstShape();
+        emit dstShapeChanged();
+        updateItem();
+    }
+}
 //-----------------------------------------------------------------------------
 
 
 /* Drag'nDrop Management *///--------------------------------------------------
-bool    EdgeItem::contains( const QPointF& point ) const
+bool    EdgeItem::contains(const QPointF& point) const
 {
-    const qreal d = distanceFromLine( point, QLineF{_p1, _p2} );
-    return ( d > 0. && d < 5. );
+    const auto lineType = _style ? _style->getLineType() : qan::EdgeStyle::LineType::Straight;
+    bool r = false;
+    qreal d;
+    switch (lineType) {
+    case qan::EdgeStyle::LineType::Straight:
+        d = distanceFromLine(point, QLineF{_p1, _p2});
+        r = ( d > 0. && d < 5. );
+        break;
+    case qan::EdgeStyle::LineType::Curved:
+        break;
+    case qan::EdgeStyle::LineType::Ortho:
+        d = distanceFromLine(point, QLineF{_p1, _c1});
+        r = ( d > 0. && d < 5. );
+        if (!r) {
+            const qreal d2 = distanceFromLine(point, QLineF{_p2, _c1});
+            r = ( d2 > 0. && d2 < 5. );
+        }
+        break;
+    }
+    return r;
 }
 
 void    EdgeItem::dragEnterEvent( QDragEnterEvent* event )

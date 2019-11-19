@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -32,8 +32,7 @@
 // \date	2017 03 10
 //-----------------------------------------------------------------------------
 
-#ifndef qanConnector_h
-#define qanConnector_h
+#pragma once
 
 // Qt headers
 #include <QQuickItem>
@@ -67,7 +66,7 @@ class Connector : public qan::NodeItem
     Q_OBJECT
 public:
     explicit Connector( QQuickItem* parent = nullptr );
-    virtual ~Connector();
+    virtual ~Connector() override = default;
     Connector(const Connector&) = delete;
     Connector& operator=(const Connector&) = delete;
     Connector(Connector&&) = delete;
@@ -96,7 +95,7 @@ public:
 signals:
     //! Emitted when \c createDefaultEdge is set to false to request creation of an edge after the visual connector has been dropped on a destination node or edge.
     void    requestEdgeCreation(qan::Node* src, QObject* dst);
-    //! Emmited after an edge has been created to allow user configuration (not emmited when \c createDefaultEdge is set to false).
+    //! Emitted after an edge has been created to allow user configuration (not Emitted when \c createDefaultEdge is set to false).
     void    edgeInserted(qan::Edge* edge);
 
 protected:
@@ -107,7 +106,7 @@ protected:
 
 public:
     /*! \brief When set to true, connector use qan::Graph::createEdge() to generate edges, when set to false, signal
-        requestEdgeCreation() is emmited instead to allow user to create custom edges (default to \c true).
+        requestEdgeCreation() is Emitted instead to allow user to create custom edges (default to \c true).
     */
     Q_PROPERTY( bool createDefaultEdge READ getCreateDefaultEdge WRITE setCreateDefaultEdge NOTIFY createDefaultEdgeChanged FINAL )
     //! \copydoc createDefaultEdge
@@ -120,20 +119,6 @@ protected:
 signals:
     //! \copydoc createDefaultEdge
     void        createDefaultEdgeChanged();
-
-public:
-    //! Enable or disable visual creation of hyper edges (default to \c false).
-    Q_PROPERTY( bool hEdgeEnabled READ getHEdgeEnabled WRITE setHEdgeEnabled NOTIFY hEdgeEnabledChanged FINAL )
-    //! \copydoc hEdgeEnabled
-    auto        getHEdgeEnabled() const noexcept -> bool;
-    //! \copydoc hEdgeEnabled
-    auto        setHEdgeEnabled(bool hEdgeEnabled) noexcept -> void;
-protected:
-    //! \copydoc hEdgeEnabled
-    bool        _hEdgeEnabled{false};
-signals:
-    //! \copydoc hEdgeEnabled
-    void        hEdgeEnabledChanged();
 
 public:
     //! Graphical item used as a draggable destination node selector (initialized and owned from QML).
@@ -160,7 +145,7 @@ public:
 signals:
     void    edgeItemChanged();
 protected:
-    QPointer<qan::EdgeItem>  _edgeItem;
+    QScopedPointer<qan::EdgeItem>  _edgeItem;
 
 public:
     /*! \brief Connector source port item (ie host node port item for the visual draggable connector item).
@@ -202,5 +187,3 @@ private slots:
 } // ::qan
 
 QML_DECLARE_TYPE(qan::Connector)
-
-#endif // qanConnector_h

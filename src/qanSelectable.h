@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -32,8 +32,7 @@
 // \date	2017 03 15
 //-----------------------------------------------------------------------------
 
-#ifndef qanSelectable_h
-#define qanSelectable_h
+#pragma once
 
 // Std headers
 #include <memory>
@@ -125,5 +124,3 @@ Q_DECLARE_INTERFACE(
     qan::Selectable,
     "com.destrat.io.QuickQanava.Selectable/3.0"
 )
-
-#endif // qanSelectable_h

@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -219,6 +219,24 @@ void    EdgeStyle::setArrowSize( qreal arrowSize ) noexcept
     if ( !qFuzzyCompare(1. + arrowSize, 1. + _arrowSize ) ) {
         _arrowSize = arrowSize;
         emit arrowSizeChanged();
+        emit styleModified();
+    }
+}
+
+auto    EdgeStyle::setSrcShape(ArrowShape srcShape) noexcept -> void
+{
+    if ( _srcShape != srcShape ) {
+        _srcShape = srcShape;
+        emit srcShapeChanged();
+        emit styleModified();
+    }
+}
+
+auto    EdgeStyle::setDstShape(ArrowShape dstShape) noexcept -> void
+{
+    if ( _dstShape != dstShape ) {
+        _dstShape = dstShape;
+        emit dstShapeChanged();
         emit styleModified();
     }
 }

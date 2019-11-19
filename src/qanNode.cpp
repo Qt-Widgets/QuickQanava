@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -47,9 +47,19 @@ namespace qan { // ::qan
 
 /* Node Object Management *///-------------------------------------------------
 Node::Node(QObject* parent) :
-    gtpo::GenNode< qan::GraphConfig >{}
+    gtpo::node< qan::Config >{}
 {
     Q_UNUSED(parent)
+
+    // Bind in/out nodes model lengthChanged() signal to in/ou degree modified signal.
+    const auto inNodesModel = get_in_nodes().model();
+    if (inNodesModel != nullptr)
+        connect( inNodesModel, &qcm::ContainerModel::lengthChanged,
+                 this,         &qan::Node::inDegreeChanged);
+    const auto outNodesModel = get_out_nodes().model();
+    if (outNodesModel != nullptr)
+        connect( outNodesModel, &qcm::ContainerModel::lengthChanged,
+                 this,          &qan::Node::outDegreeChanged);
 }
 
 Node::~Node()
@@ -59,11 +69,11 @@ Node::~Node()
 }
 
 qan::Graph* Node::getGraph() noexcept {
-    return qobject_cast< qan::Graph* >( gtpo::GenNode< qan::GraphConfig >::getGraph() );
+    return qobject_cast< qan::Graph* >( gtpo::node< qan::Config >::get_graph() );
 }
 
 const qan::Graph* Node::getGraph() const noexcept {
-    return qobject_cast< const qan::Graph* >( gtpo::GenNode< qan::GraphConfig >::getGraph() );
+    return qobject_cast< const qan::Graph* >( gtpo::node< qan::Config >::get_graph() );
 }
 
 bool    Node::operator==( const qan::Node& right ) const
@@ -102,15 +112,60 @@ qan::NodeStyle* Node::style() noexcept
 }
 //-----------------------------------------------------------------------------
 
+/* Topology Interface *///-----------------------------------------------------
+QAbstractItemModel* Node::qmlGetInNodes( ) const
+{
+    return const_cast<QAbstractItemModel*>( static_cast< const QAbstractItemModel* >( get_in_nodes().model() ) );
+}
+
+int     Node::getInDegree() const
+{
+    const auto model = get_in_nodes().model();
+    return model != nullptr ? model->getLength() : -1;
+}
+
+QAbstractItemModel* Node::qmlGetOutNodes() const
+{
+    return const_cast< QAbstractItemModel* >( qobject_cast< const QAbstractItemModel* >( get_out_nodes().model() ) );
+}
+
+int     Node::getOutDegree() const
+{
+    const auto model = get_out_nodes().model();
+    return model != nullptr ? model->getLength() : -1;
+}
+
+QAbstractItemModel* Node::qmlGetOutEdges() const
+{
+    return const_cast< QAbstractItemModel* >( qobject_cast< const QAbstractItemModel* >( gtpo::node<qan::Config>::get_out_edges().model() ) );
+}
+
+std::unordered_set<qan::Edge*>  Node::collectAdjacentEdges0() const
+{
+    std::unordered_set<qan::Edge*> edges;
+    for (const auto& in_edge_ptr: qAsConst(get_in_edges())) {
+        const auto in_edge = in_edge_ptr.lock();
+        if (in_edge)
+            edges.insert(in_edge.get());
+    }
+    for (const auto& out_edge_ptr: qAsConst(get_out_edges())) {
+        const auto out_edge = out_edge_ptr.lock();
+        if (out_edge)
+            edges.insert(out_edge.get());
+    }
+    return edges;
+}
+//-----------------------------------------------------------------------------
+
 /* Behaviours Management *///--------------------------------------------------
-void    Node::installBehaviour( std::unique_ptr<qan::NodeBehaviour> behaviour )
+void    Node::installBehaviour(std::unique_ptr<qan::NodeBehaviour> behaviour)
 {
     // PRECONDITIONS:
         // behaviour can't be nullptr
     if ( !behaviour )
         return;
     behaviour->setHost(this);
-    addBehaviour( std::move( behaviour ) );
+    add_dynamic_node_behaviour(std::move(behaviour));
 }
 //-----------------------------------------------------------------------------
 
@@ -122,6 +177,15 @@ void    Node::setLabel( const QString& label ) noexcept
         emit labelChanged();
     }
 }
+
+void    Node::setLocked(bool locked) noexcept
+{
+    if (locked != _locked) {
+        _locked = locked;
+        emit lockedChanged();
+    }
+}
+
 //-----------------------------------------------------------------------------
 
 /* Dock Management *///--------------------------------------------------------

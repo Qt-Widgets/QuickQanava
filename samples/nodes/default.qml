@@ -31,7 +31,6 @@ import QtQuick.Layouts           1.3
 
 import QuickQanava 2.0 as Qan
 import "qrc:/QuickQanava" as Qan
-import "." as Qan
 
 Qan.GraphView {
     id: graphView
@@ -45,6 +44,7 @@ Qan.GraphView {
         Component.onCompleted: {
             var n1 = graph.insertNode()
             n1.label = "Hello World"; n1.item.x=15; n1.item.y= 25
+            n1.item.ratio = 0.4
             var n2 = graph.insertNode()
             n2.label = "Node 2"; n2.item.x=15; n2.item.y= 125
 
@@ -57,7 +57,41 @@ Qan.GraphView {
         }
         onNodeRightClicked: { notifyUser( "Node <b>" + node.label + "</b> right clicked" ) }
         onNodeDoubleClicked: { notifyUser( "Node <b>" + node.label + "</b> double clicked" ) }
+
+        onNodeMoved: notifyUser("Node <b>" + node.label + "</b> moved")
+    } // Qan.Graph
+
+    Menu {      // Context menu demonstration
+        id: contextMenu
+        property var node: undefined
+        MenuItem {
+            text: "Insert Node"
+            onClicked: {
+                let n = graph.insertNode()
+                n.label = 'New Node'
+                n.item.x = contextMenu.x
+                n.item.y = contextMenu.y
+            }
+        }
+        MenuItem {
+            text: "Remove node"
+            enabled: contextMenu.node !== undefined
+            onClicked: {
+                graph.removeNode(contextMenu.node)
+                contextMenu.node = undefined
+            }
+        }
+        onClosed: { // Clean internal state when context menu us closed
+            contextMenu.node = undefined
+        }
+    } // Menu
+
+    onRightClicked: {
+        contextMenu.x = pos.x
+        contextMenu.y = pos.y
+        contextMenu.open()
     }
+
     ToolTip { id: toolTip; timeout: 2500 }
     function notifyUser(message) { toolTip.text=message; toolTip.open() }
     Label {

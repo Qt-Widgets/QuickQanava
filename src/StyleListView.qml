@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -37,7 +37,6 @@ import QtQuick.Layouts  1.3
 import QtQuick.Controls 2.0
 
 import QuickQanava      2.0 as Qan
-import "qrc:/QuickQanava"   as Qan
 
 /*! \brief Show a selectable list of style with a live style preview.
  *
@@ -68,7 +67,7 @@ ListView {
         if ( styleManager ) {
             model = styleManager.styles
             if ( model &&               // Select the first "properties" when a new model is sets
-                 model.itemCount > 0 )
+                 model.length > 0 )
                 currentIndex = 0
         } else model = null
     }
@@ -95,9 +94,9 @@ ListView {
         }
     }
 
-    //! Emmited whenever a style is clicked by the user.
+    //! Emitted whenever a style is clicked by the user.
     signal  styleClicked( var style )
-    //! Emmited whenever a style is double clicked by the user.
+    //! Emitted whenever a style is double clicked by the user.
     signal  styleDoubleClicked( var style )
 
     // Private:

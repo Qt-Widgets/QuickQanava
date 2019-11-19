@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -37,14 +37,13 @@ namespace qan { // ::qan
 
 /* Graph Factories *///--------------------------------------------------------
 template < class Node_t >
-qan::Node*  Graph::insertNode(QQmlComponent* nodeComponent)
+qan::Node*  Graph::insertNode(QQmlComponent* nodeComponent, qan::NodeStyle* nodeStyle)
 {
     if ( nodeComponent == nullptr ) {
         const auto engine = qmlEngine(this);
-        if ( engine != nullptr )
-            nodeComponent = Node_t::delegate(*engine);     // If no delegate component is specified, try the node type delegate() factory
-        if ( nodeComponent == nullptr )
-            nodeComponent = _nodeDelegate.get();    // Otherwise, use default node delegate component
+        nodeComponent = _nodeDelegate.get(); // If no delegate component is specified, try the node type delegate() factory
+        if ( nodeComponent == nullptr && engine != nullptr ) // Otherwise, use default node delegate component
+                nodeComponent = Node_t::delegate(*engine);
     }
     if ( nodeComponent == nullptr ) {               // Otherwise, throw an error, a visual node must have a delegate
         qWarning() << "Can't find a valid node delegate component.";
@@ -57,7 +56,8 @@ qan::Node*  Graph::insertNode(QQmlComponent* nodeComponent)
     const auto node = std::make_shared<Node_t>();
     try {
         QQmlEngine::setObjectOwnership( node.get(), QQmlEngine::CppOwnership );
-        qan::NodeStyle* nodeStyle = Node_t::style();
+        if (nodeStyle == nullptr )
+            nodeStyle = Node_t::style();
         if ( nodeStyle == nullptr )
             throw qan::Error{"style() factory has returned a nullptr style."};
         _styleManager.setStyleComponent(nodeStyle, nodeComponent);
@@ -87,7 +87,11 @@ qan::Node*  Graph::insertNode(QQmlComponent* nodeComponent)
         };
         connect( nodeItem, &qan::NodeItem::nodeDoubleClicked, notifyNodeDoubleClicked );
         node->setItem(nodeItem);
-        GTpoGraph::insertNode( node );
+        {   // Send item to front
+            _maxZ += 1;
+            nodeItem->setZ(_maxZ);
+        }
+        gtpo_graph_t::insert_node( node );
     } catch ( const gtpo::bad_topology_error& e ) {
         qWarning() << "qan::Graph::insertNode(): Error: Topology error: " << e.what();
         return nullptr; // node eventually destroyed by shared_ptr
@@ -100,6 +104,11 @@ qan::Node*  Graph::insertNode(QQmlComponent* nodeComponent)
         qWarning() << "qan::Graph::insertNode(): Error: Topology error.";
         return nullptr; // node eventually destroyed by shared_ptr
     }
+    const auto nodePtr = node.get();
+    if (nodePtr != nullptr) {       // Notify user.
+        onNodeInserted(*nodePtr);
+        emit nodeInserted(nodePtr);
+    }
     return node.get();
 }
 
@@ -109,7 +118,7 @@ qan::Node*  Graph::insertNonVisualNode()
     const auto node = std::make_shared<Node_t>();
     try {
         QQmlEngine::setObjectOwnership( node.get(), QQmlEngine::CppOwnership );
-        GTpoGraph::insertNode( node );
+        gtpo_graph_t::insert_node( node );
     } catch ( const gtpo::bad_topology_error& e ) {
         qWarning() << "qan::Graph::insertNonVisualNode(): Error: Topology error:" << e.what();
         return nullptr; // node eventually destroyed by shared_ptr
@@ -118,16 +127,20 @@ qan::Node*  Graph::insertNonVisualNode()
         qWarning() << "qan::Graph::insertNonVisualNode(): Error: Topology error.";
         return nullptr; // node eventually destroyed by share_ptr
     }
+    const auto nodePtr = node.get();
+    if (nodePtr != nullptr) {       // Notify user.
+        onNodeInserted(*nodePtr);
+        emit nodeInserted(nodePtr);
+    }
     return node.get();
 }
 //-----------------------------------------------------------------------------
 
 /* Graph Edge Management *///--------------------------------------------------
 template < class Edge_t >
-qan::Edge*  Graph::insertEdge( qan::Node& src, qan::Node* dstNode, qan::Edge* dstEdge, QQmlComponent* edgeComponent )
+qan::Edge*  Graph::insertEdge( qan::Node& src, qan::Node* dstNode, QQmlComponent* edgeComponent )
 {
-    if ( dstNode == nullptr &&
-         dstEdge == nullptr )
+    if ( dstNode == nullptr )
         return nullptr;
     if ( edgeComponent == nullptr ) {
         const auto engine = qmlEngine(this);
@@ -150,8 +163,8 @@ qan::Edge*  Graph::insertEdge( qan::Node& src, qan::Node* dstNode, qan::Edge* ds
         auto edge = std::make_shared<Edge_t>();
         QQmlEngine::setObjectOwnership( edge.get(), QQmlEngine::CppOwnership );
         if ( configureEdge( *edge,  *edgeComponent, *style,
-                            src,    dstNode,        dstEdge ) ) {
-            GTpoGraph::insertEdge( edge );
+                            src,    dstNode ) ) {
+            gtpo_graph_t::insert_edge( edge );
             configuredEdge = edge.get();
         }
     } catch ( gtpo::bad_topology_error e ) {
@@ -161,38 +174,35 @@ qan::Edge*  Graph::insertEdge( qan::Node& src, qan::Node* dstNode, qan::Edge* ds
         qWarning() << "qan::Graph::insertEdge<>(): Error: Topology error.";
         // Note: edge is cleaned automatically if it has still not been inserted to graph
     }
+    if (configuredEdge != nullptr)
+        emit edgeInserted(configuredEdge);
     return configuredEdge;
 }
 
 template < class Edge_t >
-qan::Edge*  Graph::insertNonVisualEdge( qan::Node& src, qan::Node* dstNode, qan::Edge* dstEdge )
+qan::Edge*  Graph::insertNonVisualEdge( qan::Node& src, qan::Node* dstNode )
 {
-    if ( dstNode == nullptr &&
-         dstEdge == nullptr )
+    if ( dstNode == nullptr )
         return nullptr;
     auto edge = std::make_shared<Edge_t>();
     try {
         QQmlEngine::setObjectOwnership( edge.get(), QQmlEngine::CppOwnership );
-        edge->setSrc( src.shared_from_this() );
+        edge->set_src( std::static_pointer_cast<Config::final_node_t>(src.shared_from_this()) );
         if ( dstNode != nullptr )
-            edge->setDst( dstNode->shared_from_this() );
-        else if ( dstEdge != nullptr)
-            edge->setHDst( dstEdge->shared_from_this() );
-        GTpoGraph::insertEdge( edge );
+            edge->set_dst( std::static_pointer_cast<Config::final_node_t>(dstNode->shared_from_this()) );
+        gtpo_graph_t::insert_edge( edge );
     } catch ( gtpo::bad_topology_error e ) {
         qWarning() << "qan::Graph::insertNonVisualEdge<>(): Error: Topology error:" << e.what();
-        // FIXME
     }
     catch ( ... ) {
         qWarning() << "qan::Graph::insertNonVisualEdge<>(): Error: Topology error.";
-        // FIXME
     }
     return edge.get();
 }
 //-----------------------------------------------------------------------------
 
 /* Graph Group Management *///-------------------------------------------------
-template < class Group_t >
+template <class Group_t>
 qan::Group* Graph::insertGroup()
 {
     const auto engine = qmlEngine(this);
@@ -201,51 +211,10 @@ qan::Group* Graph::insertGroup()
         groupComponent = Group_t::delegate(*engine);
     if ( groupComponent == nullptr )
         groupComponent = _groupDelegate.get();
-    if ( groupComponent == nullptr ) {
-        qWarning() << "qan::Graph::insertGroup<>(): Error: Can't find a valid group delegate component.";
-        return nullptr;
-    }
     auto group = std::make_shared<Group_t>();
-    if ( group ) {
-        QQmlEngine::setObjectOwnership( group.get(), QQmlEngine::CppOwnership );
-        qan::Style* style = qan::Group::style();
-        if ( style != nullptr ) {
-            // Group styles are not well supported (for the moment 20170317)
-            //_styleManager.setStyleComponent(style, edgeComponent);
-            qan::GroupItem* groupItem = static_cast<qan::GroupItem*>( createFromComponent( groupComponent,
-                                                                                           *style,
-                                                                                           nullptr,
-                                                                                           nullptr,                                                                                           group.get() ) );
-            if ( groupItem != nullptr ) {
-                groupItem->setGroup(group.get());
-                groupItem->setGraph(this);
-                group->setItem(groupItem);
-
-                GTpoGraph::insertGroup( group );
-
-                auto notifyGroupClicked = [this] (qan::GroupItem* groupItem, QPointF p) {
-                    if ( groupItem != nullptr && groupItem->getGroup() != nullptr )
-                        emit this->groupClicked(groupItem->getGroup(), p);
-                };
-                connect( groupItem, &qan::GroupItem::groupClicked, notifyGroupClicked );
-
-                auto notifyGroupRightClicked = [this] (qan::GroupItem* groupItem, QPointF p) {
-                    if ( groupItem != nullptr && groupItem->getGroup() != nullptr )
-                        emit this->groupRightClicked(groupItem->getGroup(), p);
-                };
-                connect( groupItem, &qan::GroupItem::groupRightClicked, notifyGroupRightClicked );
-
-                auto notifyGroupDoubleClicked = [this] (qan::GroupItem* groupItem, QPointF p) {
-                    if ( groupItem != nullptr && groupItem->getGroup() != nullptr )
-                        emit this->groupDoubleClicked(groupItem->getGroup(), p);
-                };
-                connect( groupItem, &qan::GroupItem::groupDoubleClicked, notifyGroupDoubleClicked );
-            } else
-                qWarning() << "qan::Graph::insertGroup<>(): Warning: Group delegate from QML component creation failed.";
-        } else qWarning() << "qan::Graph::insertGroup<>(): Error: style() factory has returned a nullptr style.";
-    }
+    if (!insertGroup(group, groupComponent, nullptr))
+        qWarning() << "qan::Graph::insertGroup<>(): Warning: Error at group insertion.";
     return group.get();
-
 }
 //-----------------------------------------------------------------------------
 

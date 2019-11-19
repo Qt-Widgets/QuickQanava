@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -99,9 +99,13 @@ public:
 
 public:
     qan::AbstractDraggableCtrl&                 draggableCtrl();
-private:
+protected:
     std::unique_ptr<qan::AbstractDraggableCtrl> _draggableCtrl;
+    //@}
+    //-------------------------------------------------------------------------
 
+    /*! \name Topology Management *///-----------------------------------------
+    //@{
 public:
     Q_PROPERTY( qan::Node* node READ getNode CONSTANT FINAL )
     auto        getNode() noexcept -> qan::Node*;
@@ -122,17 +126,21 @@ private:
     QPointer<qan::Graph>    _graph;
 
 public:
-    //! Node minimum size (it can't be resized below if resizable is true).
+    //! Node minimum size, default to "100 x 45" (node could not be visually resized below this size if \c resizable property is true).
     Q_PROPERTY( QSizeF minimumSize READ getMinimumSize WRITE setMinimumSize NOTIFY minimumSizeChanged FINAL )
     //! \copydoc minimumSize
-    QSizeF          getMinimumSize() const { return _minimumSize; }
+    const QSizeF&   getMinimumSize() const noexcept { return _minimumSize; }
     //! \copydoc minimumSize
-    void            setMinimumSize( QSizeF minimumSize ) { _minimumSize = minimumSize; emit minimumSizeChanged( ); }
+    void            setMinimumSize(QSizeF minimumSize) noexcept { _minimumSize = minimumSize; emit minimumSizeChanged( ); }
 private:
-    QSizeF          _minimumSize = QSizeF{ 100., 45. };
+    QSizeF          _minimumSize{100., 45.};
 signals:
     //! \internal
     void            minimumSizeChanged();
+
+public:
+    //! Utility function to ease initialization from c++, call setX(), setY(), setWidth() and setHEight() with the content of \c rect bounding rect.
+    auto            setRect(const QRectF& r) noexcept -> void;
     //@}
     //-------------------------------------------------------------------------
 
@@ -174,6 +182,25 @@ protected:
 signals:
     //! \copydoc resizable
     void            resizableChanged();
+
+public:
+    /*! \brief Set the node "allowed" resizing ratio when visual resizing is enabled with \c resizable (default to -1.).
+     *
+     * Ratio is witdh / height ratio that is allowed for visual resizing operations.
+     *
+     * Ration conservation is disabled if \c ration is < 0.
+     */
+    Q_PROPERTY( qreal ratio READ getRatio WRITE setRatio NOTIFY ratioChanged FINAL )
+    //! \copydoc ratio
+    inline qreal    getRatio() const noexcept { return _ratio; }
+    //! \copydoc ratio
+    void            setRatio(qreal ratio) noexcept;
+protected:
+    //! \copydoc ratio
+    qreal           _ratio{-1.};
+signals:
+    //! \copydoc ratio
+    void            ratioChanged();
 
 public:
     //! Define how the GraphView VisualConnector interact with this node.
@@ -252,6 +279,7 @@ protected:
     //@}
     //-------------------------------------------------------------------------
 
+
     /*! \name Style Management *///--------------------------------------------
     //@{
 public:
@@ -277,11 +305,11 @@ private slots:
     /*! \name Intersection Shape Management *///-------------------------------
     //@{
 signals:
-    //! Emmited whenever the node is clicked (even at the start of a dragging operation).
+    //! Emitted whenever the node is clicked (even at the start of a dragging operation).
     void    nodeClicked( qan::NodeItem* node, QPointF p );
-    //! Emmited whenever the node is double clicked.
+    //! Emitted whenever the node is double clicked.
     void    nodeDoubleClicked( qan::NodeItem* node, QPointF p );
-    //! Emmited whenever the node is right clicked.
+    //! Emitted whenever the node is right clicked.
     void    nodeRightClicked( qan::NodeItem* node, QPointF p );
 
 public:
@@ -307,7 +335,7 @@ public:
     void                setBoundingShape( const QPolygonF& boundingShape ) { _boundingShape = boundingShape; emit boundingShapeChanged(); }
 signals:
     void                boundingShapeChanged();
-    //! signal is emmited when the bounding shape become invalid and should be regenerated from QML.
+    //! signal is Emitted when the bounding shape become invalid and should be regenerated from QML.
     void                requestUpdateBoundingShape();
 protected:
     QPolygonF           generateDefaultBoundingShape() const;
@@ -440,6 +468,7 @@ private:
 } // ::qan
 
 QML_DECLARE_TYPE(qan::NodeItem)
+Q_DECLARE_METATYPE(qan::NodeItem::Connectable)
 Q_DECLARE_METATYPE(qan::NodeItem::Dock)
 
 #endif // qanNodeItem_h

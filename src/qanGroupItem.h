@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -27,13 +27,12 @@
 //-----------------------------------------------------------------------------
 // This file is a part of the QuickQanava software library.
 //
-// \file	qanGroupItem.h
-// \author	benoit@destrat.io
-// \date	2017 03 02
+// \file    qanGroupItem.h
+// \author  benoit@destrat.io
+// \date    2017 03 02
 //-----------------------------------------------------------------------------
 
-#ifndef qanGroupItem_h
-#define qanGroupItem_h
+#pragma once
 
 // Qt headers
 #include <QQuickItem>
@@ -46,6 +45,7 @@
 #include "./qanDraggable.h"
 #include "./qanAbstractDraggableCtrl.h"
 #include "./qanNode.h"
+#include "./qanNodeItem.h"
 #include "./qanGroup.h"
 
 namespace qan { // ::qan
@@ -59,26 +59,23 @@ class Graph;
  *
  * \nosubgrouping
  */
-class GroupItem : public QQuickItem,
-                  public qan::Selectable,
-                  public qan::Draggable
+class GroupItem : public qan::NodeItem
 {
     /*! \name Group Object Management *///-------------------------------------
     //@{
     Q_OBJECT
-    Q_INTERFACES(qan::Selectable)
-    Q_INTERFACES(qan::Draggable)
+    //Q_INTERFACES(qan::Selectable)
+    //Q_INTERFACES(qan::Draggable)
 public:
     //! Group constructor.
     explicit GroupItem( QQuickItem* parent = nullptr );
-    virtual ~GroupItem();
+    virtual ~GroupItem() override = default;
     GroupItem( const GroupItem& ) = delete;
+    //@}
+    //-------------------------------------------------------------------------
 
-public:
-    qan::AbstractDraggableCtrl&                 draggableCtrl();
-private:
-    std::unique_ptr<qan::AbstractDraggableCtrl> _draggableCtrl;
-
+    /*! \name Topology Management *///-----------------------------------------
+    //@{
 public:
     Q_PROPERTY( qan::Group* group READ getGroup CONSTANT FINAL )
     auto        getGroup() noexcept -> qan::Group*;
@@ -88,63 +85,76 @@ private:
     QPointer<qan::Group> _group{nullptr};
 
 public:
-    Q_PROPERTY( qan::Graph* graph READ getGraph FINAL )
-    auto    setGraph(qan::Graph* graph) noexcept -> void;
-protected:
-    //! Secure shortcut to getGroup().getGraph().
-    auto    getGraph() const noexcept -> const qan::Graph*;
-    //! \copydoc getGraph()
-    auto    getGraph() noexcept -> qan::Graph*;
-private:
-    QPointer<qan::Graph>    _graph;
+    //! Utility function to ease initialization from c++, call setX(), setY(), setWidth() and setHEight() with the content of \c rect bounding rect.
+    auto            setRect(const QRectF& r) noexcept -> void;
     //@}
     //-------------------------------------------------------------------------
 
-    /*! \name Style Management *///--------------------------------------------
+
+    /*! \name Selection and Sizing Management *///-----------------------------
     //@{
 public:
-    //! Group style object (this property is never null, a default style is returned when no style has been manually set).
-    Q_PROPERTY( qan::Style* style READ getStyle WRITE setStyle NOTIFY styleChanged FINAL )
-    void                    setStyle( qan::Style* style ) noexcept;
-    //! Generic interface for qan::DraggableCtrl<>::handleDropEvent().
-    void                    setItemStyle( qan::Style* style ) noexcept;
-    inline qan::Style*      getStyle() const noexcept { return _style.data(); }
+    //! \brief Group preferred initial size, default to "200 x 150".
+    Q_PROPERTY( qreal preferredGroupWidth READ getPreferredGroupWidth WRITE setPreferredGroupWidth NOTIFY preferredGroupWidthChanged FINAL )
+    //! \copydoc preferredGroupWidth
+    inline qreal    getPreferredGroupWidth() const noexcept { return _preferredGroupWidth; }
+    //! \copydoc preferredGroupWidth
+    void            setPreferredGroupWidth(qreal preferredGroupWidth) noexcept;
 private:
-    QPointer<qan::Style>    _style;
+    //! \copydoc preferredGroupWidth
+    qreal           _preferredGroupWidth = 250;
 signals:
-    void                    styleChanged();
-private slots:
-    //! Called when the style associed to this group is destroyed.
-    void                    styleDestroyed( QObject* style );
-    //@}
-    //-------------------------------------------------------------------------
+    //! \copydoc preferredGroupWidth
+    void            preferredGroupWidthChanged();
 
-    /*! \name Selection Management *///----------------------------------------
-    //@{
 public:
-    //! Set this property to false to disable node selection (default to true, ie node are selectable by default).
-    Q_PROPERTY( bool selectable READ getSelectable WRITE setSelectable NOTIFY selectableChanged FINAL )
-    Q_PROPERTY( bool selected READ getSelected WRITE setSelected NOTIFY selectedChanged FINAL )
-    //! \brief Item used to hilight selection (usually a Rectangle quick item).
-    Q_PROPERTY( QQuickItem* selectionItem READ getSelectionItem WRITE setSelectionItem NOTIFY selectionItemChanged FINAL )
-protected:
-    virtual void    emitSelectableChanged() override { emit selectableChanged(); }
-    virtual void    emitSelectedChanged() override { emit selectedChanged(); }
-    virtual void    emitSelectionItemChanged() override { emit selectionItemChanged(); }
+    //! \brief Group preferred initial size, default to "200 x 150".
+    Q_PROPERTY( qreal preferredGroupHeight READ getPreferredGroupHeight WRITE setPreferredGroupHeight NOTIFY preferredGroupHeightChanged FINAL )
+    //! \copydoc preferredGroupHeight
+    inline qreal    getPreferredGroupHeight() const noexcept { return _preferredGroupHeight; }
+    //! \copydoc preferredGroupHeight
+    void            setPreferredGroupHeight(qreal preferredGroupHeight) noexcept;
+private:
+    //! \copydoc preferredGroupHeight
+    qreal           _preferredGroupHeight = 200;
 signals:
-    void            selectableChanged();
-    void            selectedChanged();
-    void            selectionItemChanged();
+    //! \copydoc preferredGroupHeight
+    void            preferredGroupHeightChanged();
 
-protected slots:
-    virtual void    onWidthChanged();
-    virtual void    onHeightChanged();
+public:
+    //! \brief Group minimum size, default to "150 x 100" (group could not be visually resized below this size if \c resizable property is true).
+    Q_PROPERTY( qreal minimumGroupWidth READ getMinimumGroupWidth WRITE setMinimumGroupWidth NOTIFY minimumGroupWidthChanged FINAL )
+    //! \copydoc minimumGroupWidth
+    inline qreal    getMinimumGroupWidth() const noexcept { return _minimumGroupWidth; }
+    //! \copydoc minimumGroupWidth
+    void            setMinimumGroupWidth(qreal minimumGroupWidth) noexcept;
+private:
+    //! \copydoc minimumGroupWidth
+    qreal           _minimumGroupWidth = 150;
+signals:
+    //! \copydoc minimumGroupWidth
+    void            minimumGroupWidthChanged();
+
+public:
+    //! \brief Group minimum size, default to "150 x 100" (group could not be visually resized below this size if \c resizable property is true).
+    Q_PROPERTY( qreal minimumGroupHeight READ getMinimumGroupHeight WRITE setMinimumGroupHeight NOTIFY minimumGroupHeightChanged FINAL )
+    //! \copydoc minimumGroupHeight
+    inline qreal    getMinimumGroupHeight() const noexcept { return _minimumGroupHeight; }
+    //! \copydoc minimumGroupHeight
+    void            setMinimumGroupHeight(qreal minimumGroupHeight) noexcept;
+private:
+    //! \copydoc minimumGroupHeight
+    qreal           _minimumGroupHeight = 100.;
+signals:
+    //! \copydoc minimumGroupHeight
+    void            minimumGroupHeightChanged();
     //@}
     //-------------------------------------------------------------------------
 
     /*! \name Collapse Management *///-----------------------------------------
     //@{
 public:
+    // FIXME document me
     Q_PROPERTY( bool collapsed READ getCollapsed WRITE setCollapsed NOTIFY collapsedChanged FINAL )
     inline bool getCollapsed() const noexcept { return _collapsed; }
     void        setCollapsed( bool collapsed ) noexcept;
@@ -155,37 +165,16 @@ signals:
     //@}
     //-------------------------------------------------------------------------
 
-    /*! \name Draggable Management *///----------------------------------------
+    /*! \name Dragging Support Management *///---------------------------------
     //@{
-public:
-    //! \copydoc qan::Draggable::_draggable
-    Q_PROPERTY( bool draggable READ getDraggable WRITE setDraggable NOTIFY draggableChanged FINAL )
-    //! \copydoc qan::Draggable::_dragged
-    Q_PROPERTY( bool dragged READ getDragged WRITE setDragged NOTIFY draggedChanged FINAL )
-    //! \copydoc qan::Draggable::_dropable
-    Q_PROPERTY( bool droppable READ getDroppable WRITE setDroppable NOTIFY droppableChanged FINAL )
-    //! \copydoc qan::Draggable::_acceptDrops
-    Q_PROPERTY( bool acceptDrops READ getAcceptDrops WRITE setAcceptDrops NOTIFY acceptDropsChanged FINAL )
-protected:
-    virtual void    emitDraggableChanged() override { emit draggableChanged(); }
-    virtual void    emitDraggedChanged() override { emit draggedChanged(); }
-    virtual void    emitAcceptDropsChanged() override { emit acceptDropsChanged(); }
-    virtual void    emitDroppableChanged() override { emit droppableChanged(); }
-signals:
-    void            draggableChanged();
-    void            draggedChanged();
-    void            droppableChanged();
-    void            acceptDropsChanged();
-
 protected slots:
     //! Group is monitored for position change, since group's nodes edges should be updated manually in that case.
     void            groupMoved();
 
 public:
-    /*! Configure \c nodeItem in this group item (modify target item parenthcip, but keep same visual position).
-     * \param transformPosition set to false to avoid mapping of item position to group coordinate system (usefull for serialization).
+    /*! \brief Configure \c nodeItem in this group item (modify target item parenthcip, but keep same visual position).
      */
-    virtual void    groupNodeItem(qan::NodeItem* nodeItem, bool transformPosition = true);
+    virtual void    groupNodeItem(qan::NodeItem* nodeItem, bool transform = true);
 
     //! Configure \c nodeItem outside this group item (modify parentship, keep same visual position).
     virtual void    ungroupNodeItem(qan::NodeItem* nodeItem);
@@ -210,48 +199,35 @@ public:
      *      id: content
      *      // ...
      *  }
-     *  // ...
-     *  Component.onCompleted: {
-     *      container = content
-     *  }
+     *  container = content
      * }
      * \endcode
      */
-    Q_PROPERTY( QQuickItem* container READ getContainer WRITE setContainer NOTIFY containerChanged FINAL )
-    void            setContainer( QQuickItem* container ) { _container = container; emit containerChanged( ); }
-    QQuickItem*     getContainer( ) { return _container; }
+    Q_PROPERTY(QQuickItem* container READ getContainer WRITE setContainer NOTIFY containerChanged FINAL)
+    void                    setContainer(QQuickItem* container) noexcept;
+    QQuickItem*             getContainer() noexcept;
+    const QQuickItem*       getContainer() const noexcept;
 protected:
-    QQuickItem*     _container = nullptr;
+    QPointer<QQuickItem>    _container = nullptr;
 signals:
-    void            containerChanged( );
+    void                    containerChanged();
 
 signals:
-    //! Emmited whenever a dragged node enter the group area (could be usefull to hilight it in a qan::Group concrete QML component).
-    void            nodeDragEnter( );
-    //! Emmited whenever a dragged node leave the group area (could be usefull to hilight it in a qan::Group concrete QML component).
-    void            nodeDragLeave( );
+    //! Emitted whenever a dragged node enter the group area (could be usefull to hilight it in a qan::Group concrete QML component).
+    void            nodeDragEnter();
+    //! Emitted whenever a dragged node leave the group area (could be usefull to hilight it in a qan::Group concrete QML component).
+    void            nodeDragLeave();
 
 protected:
-    //! Internally used to manage drag and drop over nodes, override with caution, and call base class implementation.
-    virtual void    dragEnterEvent( QDragEnterEvent* event ) override;
-    //! Internally used to manage drag and drop over nodes, override with caution, and call base class implementation.
-    virtual void    dragMoveEvent( QDragMoveEvent* event ) override;
-    //! Internally used to manage drag and drop over nodes, override with caution, and call base class implementation.
-    virtual void    dragLeaveEvent( QDragLeaveEvent* event ) override;
-    //! Internally used to accept style drops.
-    virtual void    dropEvent( QDropEvent* event ) override;
-
     virtual void    mouseDoubleClickEvent(QMouseEvent* event ) override;
-    virtual void    mouseMoveEvent(QMouseEvent* event ) override;
     virtual void    mousePressEvent(QMouseEvent* event ) override;
-    virtual void    mouseReleaseEvent(QMouseEvent* event ) override;
 
 signals:
-    //! Emmited whenever the group is clicked (even at the start of a dragging operation).
+    //! Emitted whenever the group is clicked (even at the start of a dragging operation).
     void    groupClicked( qan::GroupItem* group, QPointF p );
-    //! Emmited whenever the group is double clicked.
+    //! Emitted whenever the group is double clicked.
     void    groupDoubleClicked( qan::GroupItem* group, QPointF p );
-    //! Emmited whenever the group is right clicked.
+    //! Emitted whenever the group is right clicked.
     void    groupRightClicked( qan::GroupItem* group, QPointF p );
     //@}
     //-------------------------------------------------------------------------
@@ -260,5 +236,3 @@ signals:
 } // ::qan
 
 QML_DECLARE_TYPE( qan::GroupItem )
-
-#endif // qanGroupItem_h

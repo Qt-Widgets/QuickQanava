@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -32,8 +32,7 @@
 // \date	2015 07 19
 //-----------------------------------------------------------------------------
 
-#ifndef canNavigable_h
-#define canNavigable_h
+#pragma once
 
 // Qt headers
 #include <QQuickItem>
@@ -97,7 +96,7 @@ class Navigable : public QQuickItem
 Q_OBJECT
 public:
     explicit Navigable( QQuickItem* parent = nullptr );
-    virtual ~Navigable() { }
+    virtual ~Navigable() override = default;
     Navigable( const Navigable& ) = delete;
     //@}
     //-------------------------------------------------------------------------
@@ -344,13 +343,16 @@ public:
      */
     Q_PROPERTY( qan::Grid* grid READ getGrid WRITE setGrid NOTIFY gridChanged FINAL )
     //! \copydoc grid
-    inline qan::Grid*   getGrid() noexcept { return _grid.data(); }
+    qan::Grid*          getGrid() noexcept { return _grid.data(); }
+    const qan::Grid*    getGrid() const noexcept { return _grid.data(); }
     void                setGrid(qan::Grid* grid) noexcept;
 private:
     //! Force update of grid.
     void                updateGrid() noexcept;
     //! \copydoc grid
     QPointer<qan::Grid> _grid;
+
+    std::unique_ptr<qan::Grid>   _defaultGrid;
 signals:
     //! \copydoc grid
     void                gridChanged( );
@@ -360,7 +362,5 @@ signals:
 
 } // ::qan
 
-QML_DECLARE_TYPE( qan::Navigable )
-
-#endif // qanNavigable_h
+QML_DECLARE_TYPE(qan::Navigable)
 

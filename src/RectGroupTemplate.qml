@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -38,25 +38,35 @@ import QtQuick.Layouts      1.3
 import QtGraphicalEffects   1.0
 
 import QuickQanava 2.0      as Qan
-import "qrc:/QuickQanava"   as Qan
 
 Item {
     id: template
-    x: 0;   y: 0
-    width: Math.max( content.width, 75 )
-    height: Math.max( content.height, 40 )
 
     default property alias children : content.children
     property alias  content: content
 
     property var    groupItem: undefined
 
+    //! Show or hide group top left label editor (default to visible).
+    property alias  labelEditorVisible : labelEditorControl.visible
+
+    //! Show or hide group top left expand button (default to visible).
+    property alias  expandButtonVisible : collapser.visible
+
+    property real   preferredGroupWidth: 200
+    property real   preferredGroupHeight: 150
+
+    property alias  header: headerLayout
+
     Item {
         id: content
         x: 0; y: 0; z: 3
+        width: preferredGroupWidth
+        height: preferredGroupHeight
         visible: !groupItem.collapsed
+        enabled: !groupItem.collapsed
     }
-    RectSolidBackground {        // Node background and shadow with backOpacity and backRadius support
+    RectSolidBackground {       // Node background and shadow with backOpacity and backRadius support
         id: groupBackground
         anchors.fill: content   // Note 20160328: Do not set as content child to avoid interferring with content.childrenRect
         nodeItem: template.groupItem
@@ -77,6 +87,7 @@ Item {
             onClicked: groupItem.collapsed = !groupItem.collapsed
         }
         Item {
+            id: labelEditorControl
             clip: false
             Layout.fillWidth: true; Layout.fillHeight: true
             property int fontPointSize : groupItem.style.fontPointSize  // Do not set pointSize for -1 value
@@ -112,8 +123,8 @@ Item {
         }
     } // RowLayout: collapser + label
 
-    // Emitted by qan::Group when node dragging start
+    // Emitted by qan::GroupItem when node dragging start
     function onNodeDragEnter() { groupBackground.backColor = Qt.binding( function() { return Qt.darker( template.groupItem.style.backColor, 1.05 ) } ) }
-    // Emitted by qan::Group when node dragging ends
+    // Emitted by qan::GroupItem when node dragging ends
     function onNodeDragLeave() { groupBackground.backColor = Qt.binding( function() { return template.groupItem.style.backColor } ) }
 }

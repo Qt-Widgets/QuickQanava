@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -32,8 +32,7 @@
 // \date	2017 03 17
 //-----------------------------------------------------------------------------
 
-#ifndef qanUtils_h
-#define qanUtils_h
+#pragma once
 
 // Std headers
 #include <memory>       // std::default_delete
@@ -45,6 +44,7 @@
 #include <QString>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQuickItem>
 
 namespace std
 {
@@ -76,12 +76,22 @@ public:
         std::runtime_error{what_arg}, _msg{ QString(what_arg) } { }
     explicit Error( const QString& msg_arg ) : std::runtime_error{ "" }, _msg{msg_arg} { }
 
+    virtual ~Error() override = default;
+
     const QString&  getMsg() const noexcept { return _msg; }
 private:
     QString _msg{""};
 };
 
+
+static inline auto getItemGlobalZ_rec(const QQuickItem* item) -> qreal {
+    const auto impl = [](const QQuickItem* item, const auto& self) -> qreal {
+        if (item == nullptr)
+            return 0.;
+        return item->z() + self(item->parentItem(), self);
+    };
+    return impl(item, impl);
+};
+
+
 } // ::qan
-
-#endif // qanUtils_h
-

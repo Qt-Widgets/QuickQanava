@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -63,7 +63,7 @@ namespace qan {  // ::qan
  * \endcode
  *
  * \note Resizer not necessarilly has to be in \c target sibling, you can perfectly define
- * the Fql.BottomRightResizer outside of target item hierarchy, for example to avoid corrupting
+ * the Tpp.BottomRightResizer outside of target item hierarchy, for example to avoid corrupting
  * the target childrenRect property. It is however more efficient to use the resizer as a target
  * child (it is the most common case).
  *
@@ -77,7 +77,7 @@ class BottomRightResizer : public QQuickItem
 public:
     //! .
     explicit BottomRightResizer( QQuickItem* parent = nullptr );
-    virtual ~BottomRightResizer( );
+    virtual ~BottomRightResizer() override;
     BottomRightResizer( const BottomRightResizer& ) = delete;
     //@}
     //-------------------------------------------------------------------------
@@ -128,11 +128,13 @@ public:
      * handler visibility (or set it's opacity to a given value).
      */
     Q_PROPERTY( QSizeF handlerSize READ getHandlerSize WRITE setHandlerSize NOTIFY handlerSizeChanged FINAL )
-    void        setHandlerSize( QSizeF handlerSize );
+    void        setHandlerSize( const QSizeF& handlerSize );
     QSizeF      getHandlerSize( ) const { return _handlerSize; }
 signals:
     void        handlerSizeChanged();
 private:
+    //! Internally used to force handler width value despite previous value set.
+    void        forceHandlerSize( const QSizeF& handlerSize );
     QSizeF      _handlerSize{ 9.0, 9.0 };
 
 public:
@@ -158,6 +160,8 @@ public:
 signals:
     void        handlerRadiusChanged();
 private:
+    //! Internally used to force handler width value despite previous value set.
+    void        forceHandlerRadius( qreal handlerRadius );
     qreal       _handlerRadius{ 4.0 };
 
 public:
@@ -169,6 +173,8 @@ public:
 signals:
     void        handlerWidthChanged();
 private:
+    //! Internally used to force handler width value despite previous value set.
+    void        forceHandlerWidth( qreal handlerWidth );
     qreal       _handlerWidth{ 4.0 };
 
 public:
@@ -195,17 +201,34 @@ signals:
 private:
     bool        _autoHideHandler{ false };
 
+public:
+    //! Set to true to prevent resizing that would modify the height/width ratio defined in \c ratio.
+    Q_PROPERTY( bool preserveRatio READ getPreserveRatio WRITE setPreserveRatio NOTIFY preserveRatioChanged FINAL )
+    void        setPreserveRatio(bool preserveRatio) noexcept;
+    bool        getPreserveRatio() const noexcept { return _preserveRatio; }
+signals:
+    void        preserveRatioChanged();
 private:
-    //QPointer< QQuickItem >  _handler{ nullptr };
+    bool        _preserveRatio{false};
+
+public:
+    //! Set to true to prevent resizing that would modify the height/width ratio defined in \c ratio.
+    Q_PROPERTY( qreal ratio READ getRatio WRITE setRatio NOTIFY ratioChanged FINAL )
+    void        setRatio(qreal ratio) noexcept;
+    qreal       getRatio() const noexcept { return _ratio; }
+signals:
+    void        ratioChanged();
+private:
+    qreal       _ratio{1.0};
     //@}
     //-------------------------------------------------------------------------
 
     /*! \name Resizer Management *///------------------------------------------
     //@{
 signals:
-    //! Emmited immediately before a resize operation start, \c targetSize is target item current size.
+    //! Emitted immediately before a resize operation start, \c targetSize is target item current size.
     void    resizeStart(QSizeF targetSize );
-    //! Emmited immediately after a resize operation, \c targetSize is target item size after resize.
+    //! Emitted immediately after a resize operation, \c targetSize is target item size after resize.
     void    resizeEnd( QSizeF targetSize );
 protected:
     //virtual bool    childMouseEventFilter(QQuickItem *item, QEvent *event) override;

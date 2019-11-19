@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2008-2017, Benoit AUTHEMAN All rights reserved.
+ Copyright (c) 2008-2018, Benoit AUTHEMAN All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -43,14 +43,14 @@
 namespace qan { // ::qan
 
 /* GraphView Object Management *///--------------------------------------------
-GraphView::GraphView( QQuickItem* parent ) :
-    qan::Navigable{ parent }
+GraphView::GraphView(QQuickItem* parent) :
+    qan::Navigable{parent}
 {
-    setAntialiasing( true );
-    setSmooth( true );
+    setAntialiasing(true);
+    setSmooth(true);
 }
 
-void    GraphView::setGraph( qan::Graph* graph )
+void    GraphView::setGraph(qan::Graph* graph)
 {
     if ( graph == nullptr ) {
         qWarning() << "qan::GraphView::setGraph(): Error: Setting a nullptr graph in Qan.GraphView is not supported.";
@@ -96,12 +96,14 @@ void    GraphView::setGraph( qan::Graph* graph )
 
 void    GraphView::navigableClicked(QPointF pos)
 {
-    Q_UNUSED(pos);
+    Q_UNUSED(pos)
     if ( _graph )
         _graph->clearSelection();
 }
 
-void    GraphView::navigableRightClicked(QPointF pos) { emit    rightClicked(pos); }
+void    GraphView::navigableRightClicked(QPointF pos) {
+    emit    rightClicked(pos);
+}
 //-----------------------------------------------------------------------------
 
 } // ::qan
